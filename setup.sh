@@ -1,5 +1,4 @@
-# how to setup automatically when I open Ucloud
-!/usr/bin/env
+# how to setup automatically when I open Ucloud!/usr/bin/env
 
 git config --global user.email "laura.soerine@icloud.com"
 git config --global user.name "soerinev"
