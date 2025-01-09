@@ -1,0 +1,658 @@
+---
+title: "assignment_3"
+author: "Mattis & Laura"
+date: "2024-10-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+
+## Load packages
+
+pacman::p_load('tidyverse', 'dslabs', 'cowplot', 'brms', 'dagitty')
+
+
+```
+
+
+
+
+
+```{r}
+
+## Load in the divorce margarine dataset 
+
+d <- read_csv('./data/WineDataset.csv')
+
+
+
+```
+
+*Cleaning*
+
+```{r}
+
+## Cleaning up data 
+
+# Only bottles of 75 cl
+
+d <- d %>%
+  mutate(Capacity = case_when(
+    str_detect(Capacity, "^750ML$|^75CL$") ~ "75",
+    TRUE ~ NA_character_
+  )) %>%
+  filter(!is.na(Capacity))
+
+
+# Fix prices
+
+d <- d %>%
+  mutate(Price = as.numeric(str_extract(Price, "\\d+\\.?\\d*")))
+
+
+```
+
+
+```{r}
+
+# Checking Grape variety and counts
+
+d_count <- table(d$Grape)
+d_count <- sort(d_count, decreasing = T)
+print(d_count)
+
+
+```
+
+```{r}
+# Transforming grape names so synonyms are not in dataset 
+
+d <- d %>% 
+  mutate(Grape = ifelse(Grape == "Shiraz", "Syrah", Grape),
+         Grape = ifelse(Grape == "Garnacha", "Grenache", Grape),
+         Grape = ifelse(Grape == "Pinot Grigio", "Pinot Gris", Grape), 
+         Grape = ifelse(Grape == "Primitivo", "Zinfandel", Grape))
+
+## Recheck 
+
+# Checking Grape variety and counts
+
+d_count <- table(d$Grape)
+d_count <- sort(d_count, decreasing = T)
+print(d_count)
+         
+```
+
+
+## Only top 5 grape varietires
+
+
+```{r}
+# Setting lower bound  
+
+d_filt <- d %>% 
+  group_by(Grape) %>% 
+  filter(n() >= 70)
+
+```
+
+
+
+
+
+## Only top five countries
+
+
+```{r}
+# Country count 
+
+d_count <- table(d_filt$Country)
+d_count <- sort(d_count, decreasing = T)
+print(d_count)
+
+
+```
+
+```{r}
+# Filtering 
+
+d_filt <- d_filt %>% 
+  group_by(Country) %>% 
+  filter(n() >= 26)
+
+```
+
+
+## Closure only as cork or screwcap
+
+
+```{r}
+# Checking closure types
+
+d_count <- table(d_filt$Closure)
+d_count <- sort(d_count, decreasing = T)
+print(d_count)
+```
+
+```{r}
+# Quick and dirty filtering of only screwcap and cork
+
+d_filt <- d_filt %>% 
+  group_by(Closure) %>% 
+  filter(n() >= 18)
+```
+
+
+
+## Visualizing the distribution of prices
+
+
+```{r}
+
+## Viz the distribution of wine prices
+
+d_filt %>%
+  ggplot(aes(Price)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of wine prices",
+       x = "Price",
+       y = "Frequency") +
+  theme_cowplot()
+
+
+## Plotting boxplots of closure type and price
+
+d_filt %>%
+  ggplot(aes(Closure, Price)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  labs(title = "Price distribution by closure type",
+       x = "Closure type",
+       y = "Price") +
+  theme_cowplot()
+
+
+```
+
+
+
+
+## Simulating the DAG 
+
+```{r}
+
+## Draw the DAG
+
+dag <- dagitty("dag {
+Country -> Grape
+Country -> Closure
+Country -> Price
+Grape -> Price
+Grape -> Closure
+Closure -> Price
+}")
+
+plot(dag)
+
+
+```
+```{r}
+
+## Check adjustment sets
+
+adjustmentSets(dag, exposure = "Closure", outcome = "Price")
+
+## Interpreted as the set of variables that need to be adjusted for to estimate the causal effect of closure on price
+
+```
+
+
+
+
+
+
+```{r}
+
+# Simulate country data
+
+## Probabilities for top 5 countries
+
+
+n = 1000
+
+categories <- c("France", "New Zealand", "South Africa", "USA", "Australia")
+probabilities <- c(0.3, 0.2, 0.2, 0.1, 0.2)
+
+
+sim_data <- data.frame(
+  country = sample(categories, size = n, replace = TRUE, prob = probabilities)
+)
+
+
+
+
+```
+
+
+```{r}
+
+## Simulate grape data
+
+# Grape categories
+grapes <- c("Chardonnay", "Sauvignon Blanc", "Cabernet Sauvignon", "Grenache", 
+            "Pinot Noir")
+
+
+# Define toy probabilities for grape varieties based on country
+grape_probs <- list(
+  "France" = c(0.2, 0.2, 0.2, 0.2, 0.2),
+  "New Zealand" = c(0.05, 0.05, 0.2, 0.5, 0.2),
+  "South Africa" = c(0.4, 0.2, 0.1, 0.2, 0.1),
+  "USA" = c(0.2, 0.3, 0.2, 0.1, 0.2),
+  "Australia" = c(0.2, 0.2, 0.4, 0, 0.2)
+)
+
+
+# Simulate grape data
+sim_data$grape <- sapply(sim_data$country, function(c) {
+  sample(grapes, size = 1, replace = TRUE, prob = grape_probs[[c]])
+})
+
+
+```
+
+
+
+
+
+```{r}
+
+
+
+# Define conditional probabilities for closure type based on country and grape - toy values
+
+closure_probs <- list(
+  "France" = list(
+    "Chardonnay" = c(screwtop = 0.2, cork = 0.8),
+    "Sauvignon Blanc" = c(screwtop = 0.3, cork = 0.7),
+    "Cabernet Sauvignon" = c(screwtop = 0.2, cork = 0.8),
+    "Grenache" = c(screwtop = 0.3, cork = 0.7),
+    "Pinot Noir" = c(screwtop = 0.1, cork = 0.9)
+    
+  ),
+  "Australia" = list(
+    "Chardonnay" = c(screwtop = 0.8, cork = 0.2),
+    "Sauvignon Blanc" = c(screwtop = 0.9, cork = 0.1),
+    "Cabernet Sauvignon" = c(screwtop = 0.6, cork = 0.4),
+    "Grenache" = c(screwtop = 0.7, cork = 0.3),
+    "Pinot Noir" = c(screwtop = 0.7, cork = 0.3)
+    
+  ),
+  
+  "New Zealand" = list(
+    "Chardonnay" = c(screwtop = 0.2, cork = 0.8),
+    "Sauvignon Blanc" = c(screwtop = 0.3, cork = 0.7),
+    "Cabernet Sauvignon" = c(screwtop = 0.1, cork = 0.9),
+    "Grenache" = c(screwtop = 0.2, cork = 0.8),
+    "Pinot Noir" = c(screwtop = 0.3, cork = 0.7)
+    
+  ),
+  
+  "South Africa" = list(
+    "Chardonnay" = c(screwtop = 0.4, cork = 0.6),
+    "Sauvignon Blanc" = c(screwtop = 0.4, cork = 0.6),
+    "Cabernet Sauvignon" = c(screwtop = 0.5, cork = 0.5),
+    "Grenache" = c(screwtop = 0.5, cork = 0.5),
+    "Pinot Noir" = c(screwtop = 0.4, cork = 0.6)
+  ),
+  
+  "USA" = list(
+    "Chardonnay" = c(screwtop = 0.7, cork = 0.3),
+    "Sauvignon Blanc" = c(screwtop = 0.8, cork = 0.2),
+    "Cabernet Sauvignon" = c(screwtop = 0.4, cork = 0.6),
+    "Grenache" = c(screwtop = 0.4, cork = 0.6),
+    "Pinot Noir" = c(screwtop = 0.5, cork = 0.5)
+))
+
+# Simulate closure type
+sim_data$closure <- mapply(function(c, g) {
+  prob <- closure_probs[[c]][[g]]
+  sample(c("screwtop", "cork"), size = 1, replace = TRUE, prob = prob)
+}, c = sim_data$country, g = sim_data$grape)
+
+
+
+```
+
+
+
+
+
+
+```{r}
+
+# Simulate price data
+
+
+# Define base scale and shape parameters for gamma distribution
+base_params <- list(
+  "France" = c(scale = 20, shape = 1.1),
+  "New Zealand" = c(scale = 15, shape = 1.4),
+  "South Africa" = c(scale = 14, shape = 1.2),
+  "USA" = c(scale = 12, shape = 1.2),
+  "Australia" = c(scale = 10, shape = 1.5)
+)
+
+# Adjustments for grape varieties
+grape_adjustments <- list(
+  "Chardonnay" = c(scale = 1, shape = 1),
+  "Sauvignon Blanc" = c(scale = 0.8, shape = 1.0),
+  "Cabernet Sauvignon" = c(scale = 1.2, shape = 1.2),
+  "Grenache" = c(scale = 1.1, shape = 1.1),
+  "Pinot Noir" = c(scale = 1.4, shape = 0.8)
+  # Extend for other grapes...
+)
+
+# Adjustments for closure type
+closure_adjustments <- list(
+  "screwtop" = c(scale = 0.6, shape = 1),
+  "cork" = c(scale = 1.1, shape = 1)
+)
+
+# Calculate price using gamma distribution
+sim_data$price <- mapply(function(c, g, cl) {
+  base <- base_params[[c]]
+  grape_adj <- grape_adjustments[[g]]
+  closure_adj <- closure_adjustments[[cl]]
+  
+  scale <- base["scale"] * grape_adj["scale"] * closure_adj["scale"]
+  shape <- base["shape"] * grape_adj["shape"] * closure_adj["shape"]
+  
+  rgamma(1, shape = shape, scale = scale)
+}, c = sim_data$country, g = sim_data$grape, cl = sim_data$closure)
+
+
+
+
+
+```
+
+
+
+
+```{r}
+
+## Plotting the closure type x axis and price y as boxplots
+
+sim_data %>%
+  ggplot(aes(closure, price)) +
+  geom_boxplot(fill = "skyblue", color = "black") +
+  labs(title = "Price distribution by closure type",
+       x = "Closure type",
+       y = "Price") +
+  theme_cowplot()
+
+
+
+```
+
+
+
+```{r}
+
+## Plot prices from sim_data
+
+sim_data %>%
+  ggplot(aes(price)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Simulated distribution of wine prices",
+       x = "Price",
+       y = "Frequency") +
+  theme_cowplot()
+
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+## Simulated data modelling
+
+formula <- bf(price ~ closure + grape + country, family = Gamma())
+
+# Define priors for the model
+priors <- c(
+  prior(normal(0, 1), class = "b", lb = 0),     # Lower bound of 0 to make it half-normal
+  prior(normal(0, 1), class = "Intercept", lb = 0)
+)
+
+# Fit the Bayesian model
+fit <- brm(
+  formula = formula,
+  data = sim_data,
+  prior = priors,
+  iter = 8000, warmup = 4000, chains = 8, cores = 8
+)
+
+# Print a summary of the model
+summary(fit)
+
+# Get the fixed effects
+fixed_effects <- fixef(fit)
+
+
+```
+
+
+
+
+```{r}
+
+print(1/0.05)
+
+
+```
+
+
+
+
+```{r}
+
+# Convert to a dataframe for plotting
+
+coef_df <- data.frame(
+  Parameter = rownames(fixed_effects),
+  Estimate = fixed_effects[, "Estimate"],
+  CI_low = fixed_effects[, "Q2.5"],
+  CI_high = fixed_effects[, "Q97.5"]
+)
+
+## Inverse the dataframe to get interpretable values
+
+coef_df <- coef_df %>%
+  mutate(Estimate = 1 / Estimate,
+         CI_low = 1 / CI_low,
+         CI_high = 1 / CI_high)
+
+
+# Filter for intercept and closure parameters
+
+coef_df_filtered <- coef_df %>%
+  filter(Parameter %in% c("Intercept", "closurescrewtop")) 
+
+# Plot filtered parameters
+
+ggplot(coef_df_filtered, aes(x = Parameter, y = Estimate)) +
+  geom_point(size = 3, color = "blue") + # Larger points for emphasis
+  geom_errorbar(aes(ymin = CI_low, ymax = CI_high), width = 0.2, color = "blue") +
+  coord_flip() +
+  labs(
+    title = "Posterior Estimates for Closure - Simulated",
+    x = "Parameter",
+    y = "Inverse Transformed Estimate"
+  ) +
+  theme_cowplot() +
+  theme(plot.title = element_text(hjust = 0.5)) # Center title
+
+
+## Posterior predictive check 
+
+pp_check(fit, ndraws = 50, type = "dens_overlay") + 
+  ggtitle("Posterior Predictive Check - Simulated data") + 
+  xlab("Price") +
+  ylab("Density") +
+  theme_cowplot()
+
+```
+```{r}
+
+# Extract coefficients
+intercept <- coef_df_filtered$Estimate[coef_df_filtered$Parameter == "Intercept"]
+closure_screwcap <- coef_df_filtered$Estimate[coef_df_filtered$Parameter == "closurescrewtop"]
+
+# Calculate adjusted price for screw cap wines
+cork_price <- intercept # Baseline for cork
+screwcap_price <- intercept - closure_screwcap # Do this because we are using the inverse of the estimate
+
+# Relative difference and percentage change
+relative_effect <- cork_price / screwcap_price
+percentage_change <- (relative_effect - 1) * 100
+
+# Output results
+cat("Baseline (Cork) Price:", cork_price, "\n")
+cat("Adjusted Screw Cap Price:", screwcap_price, "\n")
+cat("Relative Effect (Cork vs Screw Cap):", relative_effect, "\n")
+cat("Percentage Change:", percentage_change, "%\n")
+
+
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+## Use the real data 
+
+data_filt <- d_filt %>% select(Price, Closure, Grape, Country)
+
+
+formula <- bf(Price ~ Closure + Grape + Country, family = Gamma())
+
+# Define priors for the model
+priors <- c(
+  prior(normal(0, 1), class = "b", lb = 0),   
+  prior(normal(0, 1), class = "Intercept", lb = 0)
+)
+
+
+# Fit the Bayesian model
+fit_d <- brm(
+  formula = formula,
+  data = data_filt,
+  prior = priors,
+  iter = 8000, warmup = 4000, chains = 8, cores = 8
+)
+
+# Print a summary of the model
+summary(fit_d)
+
+# Get the fixed effects
+fixed_effects_d <- fixef(fit_d)
+
+
+
+```
+
+
+
+
+
+```{r}
+
+
+# Convert to a dataframe for plotting
+coef_df_d <- data.frame(
+  Parameter = rownames(fixed_effects_d),
+  Estimate = fixed_effects_d[, "Estimate"],
+  CI_low = fixed_effects_d[, "Q2.5"],
+  CI_high = fixed_effects_d[, "Q97.5"]
+)
+
+## Inverse the dataframe to get interpretable values
+
+coef_df_d <- coef_df_d %>%
+  mutate(Estimate = 1 / Estimate,
+         CI_low = 1 / CI_low,
+         CI_high = 1 / CI_high)
+
+
+
+# Filter for intercept and closure parameters
+coef_df_filtered_d <- coef_df_d %>%
+  filter(Parameter %in% c("Intercept", "ClosureScrewcap")) 
+
+# Plot filtered parameters
+ggplot(coef_df_filtered_d, aes(x = Parameter, y = Estimate)) +
+  geom_point(size = 3, color = "orange") + # Larger points for emphasis
+  geom_errorbar(aes(ymin = CI_low, ymax = CI_high), width = 0.2, color = "orange") +
+  coord_flip() +
+  labs(
+    title = "Posterior Estimates for Closure - Real Data",
+    x = "Parameter",
+    y = "Inverse Transformed Estimate"
+  ) +
+  theme_cowplot() +
+  theme(plot.title = element_text(hjust = 0.5)) # Center title
+
+
+## Posterior predictive check 
+
+pp_check(fit_d, ndraws = 50, type = "dens_overlay") + 
+  ggtitle("Posterior Predictive Check - Real Data") + 
+  xlab("Price") +
+  ylab("Density") +
+  theme_cowplot()
+
+
+
+```
+
+
+
+```{r}
+
+# Extract coefficients
+intercept <- coef_df_filtered_d$Estimate[coef_df_filtered_d$Parameter == "Intercept"]
+closure_screwcap <- coef_df_filtered_d$Estimate[coef_df_filtered_d$Parameter == "ClosureScrewcap"]
+
+# Calculate adjusted price for screw cap wines
+cork_price <- intercept # Baseline for cork
+screwcap_price <- intercept - closure_screwcap # Do this because we are using the inverse of the estimate
+
+# Relative difference and percentage change
+relative_effect <- cork_price / screwcap_price
+percentage_change <- (relative_effect - 1) * 100
+
+# Output results
+cat("Baseline (Cork) Price:", cork_price, "\n")
+cat("Adjusted Screw Cap Price:", screwcap_price, "\n")
+cat("Relative Effect (Cork vs Screw Cap):", relative_effect, "\n")
+cat("Percentage Change:", percentage_change, "%\n")
+
+
+
+
+```
+
