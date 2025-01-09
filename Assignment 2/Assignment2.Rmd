@@ -1,0 +1,218 @@
+---
+title: "Cultural Data Science - Assignment 2"
+author: "Laura Sørine Voldgaard"
+date: "2024-11-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load packages
+pacman::p_load(dslabs,tidyverse, car, dplyr)
+```
+
+
+# Part 1: Correlation between margarine consumption and divorce rates
+
+```{r}
+# load data
+divorce_margarine <- divorce_margarine
+head(divorce_margarine)
+```
+
+
+```{r}
+# visualize
+ggplot(divorce_margarine, aes(x=margarine_consumption_per_capita, y=divorce_rate_maine)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "darkcyan") +
+  labs(x = "Margarine consumption per capita", y = "Divorce Rate Maine", title = "Correlation Between Margarine Consumption and Divorce Rates") +
+  theme_minimal()
+```
+
+
+```{r}
+# correlation test
+cor.test(divorce_margarine$margarine_consumption_per_capita, divorce_margarine$divorce_rate_maine)
+```
+
+
+```{r}
+# make linear model
+m1 <- summary(lm(divorce_rate_maine ~ margarine_consumption_per_capita, divorce_margarine))
+m1
+```
+
+
+Q: **Would an increase in the preference for margarine lead to skyrocketing divorce rates?** <br>
+
+A: Visualization and Pearson's correlation test suggests that divorce rates and margarine consumption are correlated. The linear model also shows a significant relationship between margarine consumption per capita and divorce rate (p < 0.001). However, it seems implausible that an increase in the preference for margarine would lead to skyrocketing divorce rates, so I will not make any causal claims, it is most likely just a correlation. 
+
+
+
+
+
+
+# Part 2: English vocabulary test and demomgraphic information
+
+```{r}
+# load data
+GSSvocab <- GSSvocab
+head(GSSvocab)
+```
+
+
+```{r}
+# filter for year 1978
+GSSvocab_1978 <- GSSvocab %>% 
+  filter(year == 1978)
+head(GSSvocab)
+```
+
+
+```{r}
+# remove NAs
+GSSvocab_1978 <- GSSvocab_1978 %>% 
+  na.exclude()
+```
+
+
+
+*2.1 Level of education*
+
+```{r}
+# visualize
+ggplot(GSSvocab_1978,
+       aes(x=educ,
+           y=vocab)) +
+  labs(x = "Level of Education", y = "Vocabulary Score") +
+  geom_point() + 
+  theme_minimal() +
+  ggtitle("Scatter Plot of Vocabulary Score by Level of Education")
+  
+```
+
+
+```{r}
+# build model
+m2 <- lm(vocab ~ educ, GSSvocab_1978)
+summary(m2)
+```
+
+
+**Q: Is a person’s score on the vocabulary test significantly impacted by their level of education?** <br>
+
+A: Results from the linear model suggest that a person’s score on the vocabulary test is significantly impacted by their level of education. The intercept of 1.24 represents vocabulary score for someone with 0 years of education, so the coefficient of 0.39 for educ means that the model predicts an increase of 0.39 in vocabulary score every time level of education increases by one year. Furthermore, the significant p-value (p < 0.001) supports this, as does the visualization.
+
+
+
+
+*2.2 English-speaking nativity status and level of education*
+
+
+```{r}
+# visualize
+ggplot(GSSvocab_1978,
+       aes(x = nativeBorn, y = vocab)) +
+  geom_boxplot() +
+  labs(x = "English-Speaking Native", y = "Vocabulary Score", title = "Boxplots of Nativity Status and Vocabulary Score") +
+  theme_minimal()
+```
+
+
+```{r}
+# visualize
+ggplot(GSSvocab_1978, 
+       aes(x = educ, y = vocab, color = nativeBorn)) +
+  geom_point() +
+  labs(x = "Level of Education", y = "Vocabulary score", color = "English-speaking native") +
+  theme_minimal() +
+  ggtitle("Scatter Plot of Vocabulary Scores by Level of Education and Nativity Status ")
+```
+
+
+```{r}
+# build model
+m3 <- lm(vocab ~ educ + nativeBorn, GSSvocab_1978)
+summary(m3)
+```
+
+
+**Q: Does nativity status impact vocabulary score?** <br>
+
+A: Results from the linear model suggests that a person's score on the vocablary test is significantly impacted by their nativity status. The intercept of 0.62 represents vocabulary score for a non-native English speaker with 0 years of education. The coefficient of 0.65 for nativeBornyes indicates that native English-speakers are predicted to have an average vocabulary score of 0.65 points higher than non-native English speakers when level of education is held constant. Furthermore, the significant p-value (p < 0.01) supports this, as does the visualization.
+
+
+
+*2.3 Level of education in interaction with nativity status*
+
+
+```{r}
+# visualize
+ggplot(GSSvocab_1978,
+       aes(x = educ, y = nativeBorn)) +
+  geom_boxplot() +
+  labs(x = "Level of Education", y = "English-speaking Native", title = "Boxplots of Level of Education and Nativity Status") +
+  theme_minimal()
+```
+
+
+```{r}
+# visualize 
+ggplot(GSSvocab_1978, aes(x = educ, fill = nativeBorn)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x = "Education Level", y = "Proportion", fill = "Native Status") +
+  theme_minimal() +
+  ggtitle("Proportion of Education Levels by Native Status")
+```
+
+
+```{r}
+# fit model to check relationship between nativity status and level of education
+m4 <- lm(educ ~ nativeBorn, GSSvocab_1978)
+summary(m4)
+
+```
+
+**Q: Does a person’s level of education depend on whether they are a native of the country?** <br>
+
+A: The model suggests that nativity status is not a predictor of level of education (p > 0.05).
+
+
+```{r}
+# using education level and nativity status as an interaction term
+m5 <- lm(vocab ~ educ * nativeBorn, GSSvocab_1978)
+summary(m5)
+```
+
+
+**Q: Does it makes sense to add the relationship as an interaction term?** <br>
+
+A: The summary output of the model shows that education level in interaction with nativity status is not significantly correlated with vocabulary score. This is clear from the coefficient for educ:nativeBornyes, which is -0.02 as well sa the high p-value (p > 0.05). Therefore I do not think it makes sense to add the relationship as an interaction term in the model.
+
+
+
+
+*2.4 Model comparison*
+
+```{r}
+# comparing plots with anova
+anova_comparison <- anova(m2, m3, m5)
+anova_comparison
+```
+
+**Q: Which model performs best?** <br>
+
+A: From the ANOVA output, it also seems that including the interaction term does not provide a significant improvement in model fit over m2. m2 has an F-statistic of 10.0083, meaning that it significantly improves m1 by adding nativity status as a predictor. The low p-value supports this (p < 0.01). Thus, model 'm2: vocab ~ educ + nativeBorn' is the best performing model. 
+
+
+
+
+
+
